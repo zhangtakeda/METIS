@@ -81,3 +81,30 @@ scale. All inputs are constructed in the test itself.
 
 These tests verify numerical equations and stopping behavior. Full scenario
 convergence and agreement with measurements require separate validation.
+
+## Consistent recovery of a SOL search candidate
+
+**Sensitivity: high for recovered, stochastic or unresolved SOL searches.**
+
+The flux search previously restored only a subset of the best iterate. It then
+recomputed temperatures with coefficients from the last iterate and a different
+Mach prescription, retained the last residual, and could clear an invalid-point
+flag when no recovery occurred. The returned fields could therefore describe
+different evaluated states.
+
+Recovery now selects all returned fields, including temperature, density, Mach
+number, conduction, wall density and radiation, from the same evaluated point.
+Normalized differences are compared without squaring them first. The reported
+power residual uses the selected point and its incoming power. Invalid-point
+flags remain set, with an infinite residual for an invalid candidate. An
+unresolved residual emits `METIS:solNonConvergence`; this warning does not imply
+that the coupled wall/radiation model has reached a physical fixed point.
+
+```matlab
+assertSuccess(runtests('test/test_sol_candidate.m'));
+```
+
+Two self-contained regressions check the returned power residual, the sheath
+balance after undoing the returned Mach transform, and preservation of an
+invalid point when the search completes. Both fail on the preceding revision.
+The search modes and iteration budget are unchanged.

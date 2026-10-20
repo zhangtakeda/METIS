@@ -295,6 +295,9 @@ fmom_step = 0.5 .* ones(size(qpl_in));
 % 1ere valeur 
 if ~isfield(option,'plot2points')
 	[tebord,telim,nelim,indbad,noconv] = z0twopoints(qpl_in,fact_ne .* zs.nebord,lc,zs.zeff,zs.meff,abs(option.fcond) .* fpe,fmom .* fie,tite_loc,gamma);
+else
+    indbad = [];
+    noconv = 0;
 end
 
 % preparation de la convergence
@@ -303,10 +306,7 @@ nb = nbmax;
 err_best  = Inf .* ones(size(qpl_in));
 qpl_best  = qpl_in;
 qpl_in_loc_best = qpl_in;
-fmom_best = ones(size(qpl_in));
-zeff_div_best= ones(size(qpl_in));
-delta_qpl_rad_best = zeros(size(qpl_in));
-delta_qpl_neutral_best = zeros(size(qpl_in));
+best_state = [];
 err_stop = sqrt(eps);
 zs_loc   = zs;
 sgn = 1;
@@ -783,19 +783,29 @@ while (nb > 0) && (max(qpl_step ./ max(1 , qpl_in)) > sqrt(eps))
         drawnow
     end
     
-    err_loc = (qpl - qpl_corr) .^ 2 ./ max(1,qpl_in) .^ 2;
-    
-    indbest = find(err_loc < err_best);
-    if ~isempty(indbest)
-        err_best(indbest)  = err_loc(indbest);
-        qpl_best(indbest)  = qpl(indbest);
-        fmom_best(indbest) = fmom(indbest);
-        delta_qpl_rad_best(indbest) = delta_qpl_rad(indbest);
-        delta_qpl_neutral_best(indbest) = delta_qpl_neutral(indbest);
-        qpl_in_loc_best(indbest) =  qpl_in_loc(indbest);
-        zeff_div_best(indbest) = zeff_div(indbest);
+    % Compare normalized differences before squaring can overflow, and keep
+    % every returned field from the same evaluated point of the search.
+    err_loc = abs((qpl - qpl_corr) ./ max(1,qpl_in));
+    point_bad = false(size(qpl));
+    point_bad(indbad) = true;
+    candidate = struct('qpl',qpl,'tebord',tebord,'telim',telim,'nelim',nelim, ...
+        'fmom',fmom,'rad',delta_qpl_rad,'neutral',delta_qpl_neutral, ...
+        'incoming',qpl_in_loc,'zeff',zeff_div,'mach',mach_target, ...
+        'prad',prad_loc,'pradsol',pradsol_loc,'fcond',fcond, ...
+        'nwp',profli.nwp,'bad',point_bad,'corrected',qpl_corr);
+    if isempty(best_state)
+        best_state = candidate;
     end
-    
+    indbest = find(err_loc < err_best);
+    names = fieldnames(candidate);
+    for state_index = 1:numel(names)
+        name = names{state_index};
+        best_state.(name)(indbest,:) = candidate.(name)(indbest,:);
+    end
+    err_best(indbest) = err_loc(indbest);
+    qpl_best = best_state.qpl;
+    qpl_in_loc_best = best_state.incoming;
+
     if  (max(qpl_step ./ max(1 , qpl_in)) <= sqrt(eps))
         break
     elseif isfield(option,'plot2points')
@@ -825,62 +835,28 @@ while (nb > 0) && (max(qpl_step ./ max(1 , qpl_in)) > sqrt(eps))
 	
 end		   
 
-err = max(sqrt(err_loc));
-indnon_best = find((err_loc > err_stop) & (err_loc > err_best));
-if ~isempty(indnon_best) && ~isfield(option,'plot2points')
-
-	qpl(indnon_best)  = qpl_best(indnon_best);
-	fmom(indnon_best) = fmom_best(indnon_best);
-	delta_qpl_rad(indnon_best) = delta_qpl_rad_best(indnon_best);
-	delta_qpl_neutral(indnon_best) = delta_qpl_neutral_best(indnon_best);
-        qpl_in_loc(indnon_best) = qpl_in_loc_best(indnon_best);
-        zeff_div(indnon_best) = zeff_div_best(indnon_best);
-
-	% recalcul final
- 	if ~isfield(option,'plot2points')
-       		[tebord,telim,nelim,indbad,noconv] = z0twopoints(qpl,fact_ne .* zs.nebord,lc,zs.zeff,zs.meff,abs(option.fcond) .* fpe .*  qpl_in ./ max(1,qpl),fmom .* fie,tite_loc,gamma);
-		% calcul de la correction cinetique
-		% ref : Stangeby ch 26 + 
-		% W. Fundamenski, topical review, PPCF 47 (2005) p R163-R208, formule 10
-		% alpha_e ~ 1.5 recommande mais avec tanh, on choisi alpha_e = 0.82
-		if option.fcond < 0
-			% point fixe
-			for lcond=1:5
-				qelim = option.alpha_e .* sqrt(phys.e .* telim ./ phys.me) .*  phys.e .* telim .* nelim;
-				fcond = abs(option.fcond) .* fpe ./ (1 - min(0.9,tanh(qpl ./ qelim))) .*  qpl_in ./ max(1,qpl);	
-				[tebord,telim,nelim,indbad,noconv] = z0twopoints(qpl,fact_ne .* zs.nebord,lc,zs.zeff,zs.meff,fcond,fmom .* fie,tite_loc,gamma);					
-			end
-                else
-			fcond = abs(option.fcond) .* fpe .*  qpl_in ./ max(1,qpl);
-		end
-	else
-		qelim = option.alpha_e .* sqrt(phys.e .* telim ./ phys.me) .*  phys.e .* telim .* nelim;
-		fcond = abs(option.fcond) .* fpe ./ (1 - min(0.9,tanh(qpl ./ qelim))) .*  qpl_in ./ max(1,qpl);	
-	
-	end
-	if option.mach_corr == 1
-		% nombre de mach (model simple pour detachement)
-		% ref JET-P(64) 05 , P. H. Harbour and A. Loarte
-                if  option.eioniz > 0
-			Kt          = min(0.5,max(-0.5,0.5 .* (1 - 2 .* tanh(Recycling .* option.eioniz ./ gamma_e ./ max(eps,telim)))));
-                else
-			Kt          = min(0.5,max(-0.5,0.5 .* (1 - 2 .* tanh(Recycling .* z0eioniz_div(telim,nelim) ./ gamma_e ./ max(eps,telim)))));
-		end
-		mach_target = sqrt(3 .* (1 - Kt) ./ (1 + Kt));
-		
- 		if ~isfield(option,'plot2points')
-			% formule Stangeby 14.4-14.11
-			ftm = (gamma_e .* (1 + mach_target .^ 2) ./ (2 .* abs(mach_target) .* (gamma_e - 1 + mach_target .^ 2))) .^ 2;
-			telim = ftm .* telim;
-			fnm   = 2 ./ (ftm .* (1 + mach_target .^ 2));
-			nelim = fnm .* nelim;
-			% tebord est inchange
-			% le flux sur le target est change !
-		end
-	end
-else
-	indbad = [];
-        noconv = 0;
+indnon_best = find((err_loc > err_best) | (~isfinite(err_loc) & isfinite(err_best)));
+if ~isfield(option,'plot2points')
+    names = fieldnames(candidate);
+    for state_index = 1:numel(names)
+        name = names{state_index};
+        candidate.(name)(indnon_best,:) = best_state.(name)(indnon_best,:);
+    end
+end
+qpl=candidate.qpl; tebord=candidate.tebord; telim=candidate.telim;
+nelim=candidate.nelim; fmom=candidate.fmom;
+delta_qpl_rad=candidate.rad; delta_qpl_neutral=candidate.neutral;
+qpl_in_loc=candidate.incoming; zeff_div=candidate.zeff;
+mach_target=candidate.mach; prad_loc=candidate.prad;
+pradsol_loc=candidate.pradsol; fcond=candidate.fcond;
+profli.nwp=candidate.nwp; indbad=find(candidate.bad);
+err=max(abs(qpl-candidate.corrected)./max(1,abs(qpl_in_loc)));
+if ~isempty(indbad)
+    err=Inf;
+end
+if ~isfield(option,'plot2points') && (~isfinite(err) || err > err_stop)
+    warning('METIS:solNonConvergence', ...
+        'SOL search returned an unresolved candidate (relative power residual %g).',err);
 end
 if ~isempty(indbad)
 	tebord(indbad)= 30;
