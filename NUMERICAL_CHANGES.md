@@ -108,3 +108,23 @@ Two self-contained regressions check the returned power residual, the sheath
 balance after undoing the returned Mach transform, and preservation of an
 invalid point when the search completes. Both fail on the preceding revision.
 The search modes and iteration budget are unchanged.
+
+## Separate the SOL radiation floor from the target temperature
+
+**Sensitivity: high for wall-enabled limiter and mixed X-point calculations.**
+
+The wall/radiation update uses a configuration-dependent lower temperature
+bound for the SOL radiation integral. It previously assigned this bound back
+to `telim`, replacing a positive physical target temperature by zero in limiter
+configurations and non-X-point rows. That modified the later recycling and
+impurity calculations and violated the returned pressure/sheath balances.
+
+The radiation integral now receives a separate `telim_rad` variable. Physical
+target temperature remains available to subsequent closures and to the caller.
+The radiation floor's definition is unchanged.
+
+The additional `test_sol_candidate` regression constructs a circular SOL case
+with explicit zero-loss wall/radiation test helpers. It checks positive target
+temperatures and pressure balance in both limiter and mixed X-point rows. These
+helpers isolate bookkeeping; actual wall yields and radiation tables require
+separate scenario validation.

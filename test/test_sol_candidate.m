@@ -41,6 +41,46 @@ z.nebord(2)=Inf;
 verifyEqual(testCase,bad,2);
 end
 
+function testRadiationFloorDoesNotReplaceThePhysicalTargetTemperature(testCase)
+% Zero-loss wall/radiation helpers isolate the temperature bookkeeping.
+[o,c,g,z,p]=inputs;
+o.W_effect=1; o.mach_corr=0; o.Recycling=0;
+o.modeh=1; o.frad=1; o.matthews=0; o.z_prad='zmax';
+o.sol_rad='coupled'; o.gaunt=0; o.noncoronal=0;
+o.fnesol=.2;
+o.te_max=1e5; o.cor_rel_brem='Stott';
+g.K=ones(2,1); g.b0=2.5*ones(2,1);
+z.nem=3e19*ones(2,1); z.tem=1e3*ones(2,1); z.zmszl=ones(2,1);
+z.ane=ones(2,1); z.ate=ones(2,1); z.te0=1e3*ones(2,1);
+z.nbar=z.nem; z.taue=ones(2,1); z.vp=ones(2,1); z.sext=ones(2,1);
+directory=tempname; mkdir(directory); prior_path=path;
+cleanup=onCleanup(@() remove_helpers(directory,prior_path));
+write_helper(fullfile(directory,'z0acctungsten.m'),sprintf([ ...
+    'function [nw,nwm,z1,z2]=z0acctungsten(o,g,c,z,p)\n' ...
+    'nw=zeros(size(p.nwp)); nwm=zeros(size(z.nem)); z1=nw; z2=nw;\nend\n']));
+write_helper(fullfile(directory,'zrad0.m'),sprintf([ ...
+    'function [prad,pbrem,pcyclo,pradsol,p]=zrad0(varargin)\n' ...
+    'prad=zeros(size(varargin{1})); pbrem=prad; pcyclo=prad; pradsol=prad; p=struct;\nend\n']));
+addpath(directory,'-begin'); clear z0acctungsten zrad0;
+for configuration=[1,3]
+    o.configuration=configuration; z.xpoint=[0;1];
+    [tu,nt,tt,q,err,nb,bad,fmom]=z0convergence_2points_dic(o,c,g,z,p,0);
+    verifyGreaterThan(testCase,tt,zeros(2,1));
+    verifyEqual(testCase,4*nt.*tt,fmom.*(1+z.tibord./z.tebord).*z.nebord.*tu,'RelTol',2e-12);
+    verifyEmpty(testCase,bad);
+end
+end
+
+function write_helper(filename,source)
+fid=fopen(filename,'w'); cleanup=onCleanup(@() fclose(fid));
+fprintf(fid,'%s',source);
+end
+
+function remove_helpers(directory,prior_path)
+path(prior_path); clear z0acctungsten zrad0;
+rmdir(directory,'s');
+end
+
 function [o,c,g,z,p]=inputs
 % Construct a two-time, circular, radiation-free example from the equations.
 x=linspace(0,1,21); v=ones(2,1);

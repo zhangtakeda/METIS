@@ -456,10 +456,10 @@ while (nb > 0) && (max(qpl_step ./ max(1 , qpl_in)) > sqrt(eps))
         % selon la configuration
         switch option.configuration
             case {2,3,4}
-                telim       = zs.xpoint .* telim;
+                telim_rad   = zs.xpoint .* telim;
                 nesol_ave   = (1 - option.fnesol) .* zs.nebord + option.fnesol .* nelim;
             otherwise
-                telim       = 0 .* telim;
+                telim_rad   = zeros(size(telim));
                 nesol_ave   = zs.nebord;
         end
         switch option.gaz
@@ -473,7 +473,7 @@ while (nb > 0) && (max(qpl_step ./ max(1 , qpl_in)) > sqrt(eps))
             zs_loc.zeff ./ zs_loc.zmszl,option.zmax,option.zimp,option.rimp,zgaz, ...
             geo.R,geo.a,geo.K,geo.b0,zs_loc.ane,zs_loc.ate,sqrt(-1),zs.vp,zs.sext, ...
             (option.modeh > 0),option.frad,zs.te0,zs.nbar,option.matthews, ...
-            telim,nesol_ave,zs_loc.taue,zs_loc.dsol,0,option.z_prad,option.sol_rad, ...
+            telim_rad,nesol_ave,zs_loc.taue,zs_loc.dsol,0,option.z_prad,option.sol_rad, ...
             option.gaunt,option.noncoronal == 1,cons.temps,profli, ...
             option.Sn_fraction,option.te_max,option.cor_rel_brem,nboronm);
         % puissance conduite a la separatrice
