@@ -859,13 +859,12 @@ elseif isfield(profli,'source_el')
 
 			
 		% amorti
+        % Test the unrelaxed map. Shrinking the update cannot prove convergence.
+        deltae = max(abs(tep(:)-tepmem(:))) / mean(tepmem(:));
+        deltai = max(abs(tip(:)-tipmem(:))) / mean(tipmem(:));
+        deltaei = max(deltae,deltai);
 	    tep =  min(telim,max(max(tebord * ve,t_sub * ve),real(f .* tep + tepmem .* (1-f))));		
 		tip =  min(telim,max(max(tibord * ve,t_sub * ve),real(f .* tip + tipmem .* (1-f))));
-
-		deltae  =  max(abs(tep(:) - tepmem(:))) ./ mean(tepmem(:));
-		deltai  =  max(abs(tip(:) - tipmem(:))) ./ mean(tipmem(:));
-		deltaeimem = deltaei;
-		deltaei =  max(deltae,deltai);
 
 		tepmem = tep;
 		tipmem = tip;
@@ -875,9 +874,6 @@ elseif isfield(profli,'source_el')
 		pep = ee .* tep .* nep;
 		pip = ee .* tip .* nip;
 		
-		% diminution de f
-		f = 0.7 .* f;
-
 		% fin boucle de convergence
 		%disp([kl,f,deltaei]);
 		if (deltaei < 1e-3) & (kl > 11)
@@ -885,8 +881,10 @@ elseif isfield(profli,'source_el')
 		end
 		
 	end
-	if kl >= klmax
-		fprintf('e');
+    if ~isfinite(deltaei) || deltaei >= 1e-3
+        warning('METIS:thermalNonConvergence', ...
+            'Heat-profile fixed point did not converge in %d iterations (relative residual %.6g).', ...
+            klmax,deltaei);
     end
     
     % memorisation

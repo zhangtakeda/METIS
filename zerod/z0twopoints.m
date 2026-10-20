@@ -82,13 +82,18 @@ B = qpar ./ gamma ./ phys.e ./ sqrt((zeff + tite) .* phys.e ./ (phys.ua .* meff)
 %B = qpar ./ gamma ./ phys.e ./ sqrt(2 .* phys.e ./ (phys.ua .* meff));
 C = (7/2) .* fpe .* qpar .* lc ./ koe;
 D = (A .* B) .^ (7/2);
+% The original polynomial solver also required its unit/zero coefficients
+% to have the heat-flux size. Do not silently expand a scalar heat flux.
+if ~isequal(size(C),size(D),size(qpar))
+    error('METIS:twoPointShape','The SOL cubic coefficients must match the heat-flux size.');
+end
 
 % resolution
-c0 = -D;
-c1 = C;
-c2 = zeros(size(qpar));
-c3 = ones(size(qpar));
-[x1,x2,x3]= zpolyroot(c0,c1,c2,c3);
+% C and D are nonnegative. Compute the unique positive root without
+% subtracting the nearly equal Cardano terms in cold-target regimes.
+x1 = positive_cubic(C,D);
+x2 = (-x1 + 1i .* sqrt(3 .* x1.^2 + 4 .* C)) ./ 2;
+x3 = conj(x2);
 
 % selection
 xs = cat(2,x1,x2,x3);
@@ -147,7 +152,11 @@ err1 = eps + abs(4 .* net .* tet - fei .* neu .* teu) ./ (4 .* net .* max(eps,te
 % equation 2
 err2 = eps + abs(qpar - gamma .* phys.e .* net .* tet .* sqrt((zeff + tite) .* phys.e .* tet ./ (phys.ua .* meff))) ./ qpar;
 % equation 3
-err3 = eps + abs(teu .^ (7/2) - tet .^ (7/2) - (7/2) .* fpe .* qpar .* lc ./ koe) ./ ((7/2) .* fpe .* qpar .* lc ./ koe);
+conduction_scale = C;
+zero_conduction = (C == 0);
+conduction_scale(zero_conduction) = max(realmin, ...
+    abs(teu(zero_conduction)).^(7/2) + abs(tet(zero_conduction)).^(7/2));
+err3 = eps + abs(teu .^ (7/2) - tet .^ (7/2) - C) ./ conduction_scale;
 % backup for invalid
 indbad = find((data_ok == 0) | (err1 > 1e-3) | (err2 > 1e-3) | (err3 > 1) | ...
               (tau == 0) | ~isfinite(tau));
@@ -180,3 +189,34 @@ plot(ind,qpar);
 
 drawnow
 %keyboard
+
+end
+
+function root = positive_cubic(p,forcing)
+% Normalize by a positive upper bound before monotone Newton iteration.
+% Invalid coefficients belong to their own points; indbad reports them.
+valid = isfinite(p) & isfinite(forcing) & imag(p)==0 & imag(forcing)==0 & ...
+        real(p)>=0 & real(forcing)>=0;
+p = real(p);
+forcing = real(forcing);
+root = NaN(size(p));
+for k = 1:numel(p)
+    if ~valid(k)
+        continue
+    end
+    if forcing(k)==0; root(k)=0; continue; end
+    cubic_bound = nthroot(forcing(k),3);
+    if p(k)==0; root(k)=cubic_bound; continue; end
+    linear_bound = forcing(k)/p(k);
+    bound = min(cubic_bound,linear_bound);
+    alpha = (bound/cubic_bound)^3;
+    beta = bound/linear_bound;
+    value = 1;
+    for iteration = 1:12
+        correction = (alpha*value^3+beta*value-1)/(3*alpha*value^2+beta);
+        value = value-correction;
+        if abs(correction)<=eps*value; break; end
+    end
+    root(k) = bound*value;
+end
+end
