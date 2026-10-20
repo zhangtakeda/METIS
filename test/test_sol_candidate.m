@@ -41,18 +41,56 @@ z.nebord(2)=Inf;
 verifyEqual(testCase,bad,2);
 end
 
+function testAutomaticMomentumMatchesTheSolvedPressureBalance(testCase)
+[o,c,g,z,p]=inputs;
+o.fmom=0; z.nebord=1e20*ones(2,1); z.pin=[3e5;7e5];
+prior_rng=rng; cleanup=onCleanup(@() rng(prior_rng));
+for conduction=[1,-1]
+    for mach_enabled=[0,1]
+        o.fcond=conduction; o.mach_corr=mach_enabled;
+        rng(7,'twister');
+        [tu,nt,tt,q,err,nb,bad,fmom,rad,neutral,incoming,power,zeff,gamma,mach]= ...
+            z0convergence_2points_dic(o,c,g,z,p,4);
+        % The Mach transform changes the target momentum by 2/(1+M^2).
+        pressure=2*(1+mach.^2).*nt.*tt;
+        expected=fmom.*(1+z.tibord./z.tebord).*z.nebord.*tu;
+        verifyEqual(testCase,pressure,expected,'RelTol',2e-12);
+        verifyEmpty(testCase,bad);
+    end
+end
+end
+
+function testCandidateRankingUsesItsOwnIncomingPower(testCase)
+% Manufactured wall feedback changes incoming power at every trial flux.
+[o,c,g,z,p]=wall_inputs;
+directory=tempname; mkdir(directory); prior_path=path;
+cleanup=onCleanup(@() remove_helpers(directory,prior_path));
+write_helper(fullfile(directory,'z0acctungsten.m'),sprintf([ ...
+    'function [nw,nwm,z1,z2]=z0acctungsten(o,g,c,z,p)\n' ...
+    'nw=zeros(size(p.nwp)); nwm=zeros(size(z.nem)); z1=nw; z2=nw;\nend\n']));
+write_helper(fullfile(directory,'zrad0.m'),sprintf([ ...
+    'function [prad,pbrem,pcyclo,pradsol,p]=zrad0(varargin)\n' ...
+    'persistent initial;\n' ...
+    'tt=varargin{22}; nt=varargin{23}; e=1.602176462e-19; ua=1.66053873e-27;\n' ...
+    'gamma=2.5+2/.9-.5*log((2*pi*9.10938188e-31/1.6726485e-27)*2/.9^2);\n' ...
+    'q=gamma*e.*nt.*tt.*sqrt(2*e.*tt/(2*ua));\n' ...
+    'if isempty(initial); initial=q; end\n' ...
+    'fraction=.2*ones(size(q)); fraction(q>=.999*initial)=.99;\n' ...
+    'prad=[3e6;7e6].*(1-fraction.*q./initial);\n' ...
+    'pbrem=zeros(size(q)); pcyclo=pbrem; pradsol=pbrem; p=struct;\nend\n']));
+addpath(directory,'-begin'); clear z0acctungsten zrad0;
+prior_rng=rng; rng_cleanup=onCleanup(@() rng(prior_rng)); rng(7,'twister');
+[tu,nt,tt,q,err,nb,bad,fmom,rad,neutral,incoming]= ...
+    z0convergence_2points_dic(o,c,g,z,p,4);
+% The initial candidate has residual 1/99; every lower-flux candidate has 4.
+verifyEqual(testCase,incoming,.99*q,'RelTol',2e-12);
+verifyEqual(testCase,err,1/99,'RelTol',2e-11);
+verifyEmpty(testCase,bad);
+end
+
 function testRadiationFloorDoesNotReplaceThePhysicalTargetTemperature(testCase)
 % Zero-loss wall/radiation helpers isolate the temperature bookkeeping.
-[o,c,g,z,p]=inputs;
-o.W_effect=1; o.mach_corr=0; o.Recycling=0;
-o.modeh=1; o.frad=1; o.matthews=0; o.z_prad='zmax';
-o.sol_rad='coupled'; o.gaunt=0; o.noncoronal=0;
-o.fnesol=.2;
-o.te_max=1e5; o.cor_rel_brem='Stott';
-g.K=ones(2,1); g.b0=2.5*ones(2,1);
-z.nem=3e19*ones(2,1); z.tem=1e3*ones(2,1); z.zmszl=ones(2,1);
-z.ane=ones(2,1); z.ate=ones(2,1); z.te0=1e3*ones(2,1);
-z.nbar=z.nem; z.taue=ones(2,1); z.vp=ones(2,1); z.sext=ones(2,1);
+[o,c,g,z,p]=wall_inputs; o.fnesol=.2;
 directory=tempname; mkdir(directory); prior_path=path;
 cleanup=onCleanup(@() remove_helpers(directory,prior_path));
 write_helper(fullfile(directory,'z0acctungsten.m'),sprintf([ ...
@@ -69,6 +107,18 @@ for configuration=[1,3]
     verifyEqual(testCase,4*nt.*tt,fmom.*(1+z.tibord./z.tebord).*z.nebord.*tu,'RelTol',2e-12);
     verifyEmpty(testCase,bad);
 end
+end
+
+function [o,c,g,z,p]=wall_inputs
+[o,c,g,z,p]=inputs;
+o.W_effect=1; o.mach_corr=0; o.Recycling=0; o.configuration=3;
+o.modeh=1; o.frad=1; o.matthews=0; o.z_prad='zmax';
+o.sol_rad='coupled'; o.gaunt=0; o.noncoronal=0; o.fnesol=1;
+o.te_max=1e5; o.cor_rel_brem='Stott'; z.xpoint=ones(2,1);
+g.K=ones(2,1); g.b0=2.5*ones(2,1);
+z.nem=3e19*ones(2,1); z.tem=1e3*ones(2,1); z.zmszl=ones(2,1);
+z.ane=ones(2,1); z.ate=ones(2,1); z.te0=1e3*ones(2,1);
+z.nbar=z.nem; z.taue=ones(2,1); z.vp=ones(2,1); z.sext=ones(2,1);
 end
 
 function write_helper(filename,source)

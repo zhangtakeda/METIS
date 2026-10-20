@@ -94,20 +94,37 @@ different evaluated states.
 
 Recovery now selects all returned fields, including temperature, density, Mach
 number, conduction, wall density and radiation, from the same evaluated point.
-Normalized differences are compared without squaring them first. The reported
-power residual uses the selected point and its incoming power. Invalid-point
+Normalized differences are compared without squaring them first. Candidate
+ranking, recovery and the reported power residual all use
+`abs(q - q_corrected)/max(1,abs(q_in_candidate))`. Wall feedback can change this
+incoming power at each candidate; using the original incoming power for ranking
+can discard a point with a smaller returned residual. Invalid-point
 flags remain set, with an infinite residual for an invalid candidate. An
 unresolved residual emits `METIS:solNonConvergence`; this warning does not imply
 that the coupled wall/radiation model has reached a physical fixed point.
+
+Automatic momentum updates retain the coefficient used by the last temperature
+and density solve. The proposed next coefficient has not been evaluated and
+cannot describe that solution. This preserves the candidate pressure balance
+without changing the eleven-update budget or claiming convergence of the
+momentum fixed point. In the two-time regression, the original recovery code
+had a relative pressure defect of about `0.2484%` with Mach correction disabled.
 
 ```matlab
 assertSuccess(runtests('test/test_sol_candidate.m'));
 ```
 
-Two self-contained regressions check the returned power residual, the sheath
-balance after undoing the returned Mach transform, and preservation of an
-invalid point when the search completes. Both fail on the preceding revision.
-The search modes and iteration budget are unchanged.
+Four self-contained regressions check the returned power residual, the sheath
+balance after undoing the returned Mach transform, preservation of an invalid
+point, automatic momentum pressure balance with Mach and kinetic conduction
+enabled/disabled, and ranking with candidate-dependent incoming power. The
+manufactured wall feedback has an initial residual of `1/99` and residual `4`
+at lower trial fluxes. The inconsistent ranking returned the latter; the
+unified definition retains the initial candidate. These wall helpers isolate
+candidate selection and do not qualify actual radiation or sputtering tables.
+The first two regressions fail before complete recovery; the added momentum
+and ranking regressions fail on its first implementation. Search modes and
+the iteration budget are unchanged.
 
 ## Separate the SOL radiation floor from the target temperature
 
