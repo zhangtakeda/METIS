@@ -32,6 +32,26 @@ shape mismatches, scalar/batch agreement, and mixed valid/invalid points.
 The cold-target inputs and expected values are included in the test file.
 No external scenario data or additional solver is required.
 
+### Reconstruction of positive cold roots
+
+**Sensitivity: high at the cold end of the SOL heat-flux search.**
+
+The temperature root must also satisfy conduction, pressure and sheath balances.
+The previous density reconstruction divided the sheath coefficient by
+`max(eps,T_target^(3/2))`. This dimensionless cutoff changed the balances for
+positive cold roots. A second cutoff replaced targets below `eps` by `0.1 eV`.
+For example, a manufactured `200 eV` upstream solution was reconstructed as
+about `0.000674 eV` before these cutoffs were removed.
+
+The solver now reconstructs upstream temperature from
+`T_upstream = (C + T_target^(7/2))^(2/7)` and density from the pressure balance.
+It retains positive target temperatures without a machine-epsilon floor in
+physical units. The original invalid-coefficient and invalid-root diagnostics
+remain active. A seventh SOL regression checks all three balances, including
+positive targets smaller than machine epsilon. These are algebraic limits;
+they do not qualify a plasma model at arbitrarily low temperatures or high
+densities. Reassess coupled SOL convergence when using the changed outputs.
+
 ## Heat-profile fixed-point convergence
 
 **Sensitivity: high; temperatures, exchange and transport outputs can change.**

@@ -60,6 +60,27 @@ verifyTrue(testCase,all(isfinite(nt) & nt>0));
 verifyEmpty(testCase,bad);
 end
 
+function testManufacturedColdBalanceWithoutDimensionalEpsilonFloor(testCase)
+% A cold positive root still satisfies pressure, sheath and conduction.
+% These algebraic limits do not establish a cold-plasma validity domain.
+e=1.602176462e-19; ua=1.66053873e-27;
+q=ones(3,1); ne=[1e19;1e20;1e21]; tu=200*ones(3,1);
+lc=100*ones(3,1); v=ones(3,1); gamma=7*v; fei=2*v;
+B=q./gamma/e./sqrt(2*e/(2*ua));
+tt=(4*B./(fei.*ne.*tu)).^2;
+nt=fei.*ne.*tu./(4*tt);
+fpe=(tu.^(7/2)-tt.^(7/2))*2000./((7/2)*q.*lc);
+[actual_tu,actual_tt,actual_nt,bad]=z0twopoints(q,ne,lc,v,2*v,fpe,fei,v,gamma);
+verifyEqual(testCase,actual_tu,tu,'RelTol',2e-13);
+verifyEqual(testCase,actual_tt,tt,'RelTol',2e-13);
+verifyEqual(testCase,actual_nt,nt,'RelTol',2e-13);
+verifyEmpty(testCase,bad);
+verifyEqual(testCase,4*actual_nt.*actual_tt,fei.*ne.*actual_tu,'RelTol',2e-13);
+verifyEqual(testCase,gamma*e.*actual_nt.*actual_tt.*sqrt(2*e*actual_tt/(2*ua)),q,'RelTol',2e-13);
+verifyEqual(testCase,actual_tu.^(7/2)-actual_tt.^(7/2), ...
+    (7/2)*fpe.*q.*lc/2000,'RelTol',2e-13);
+end
+
 function testMismatchedCoefficientShapesAreRejected(testCase)
 % Preserve the equal-size coefficient contract of the original polynomial solve.
 verifyError(testCase,@() z0twopoints(1e6,[1e19;2e19],10,1,2,.5,2,1,7), ...

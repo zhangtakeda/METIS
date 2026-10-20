@@ -105,21 +105,10 @@ tau  = sum(abs(xs).* mask,2) ./ max(1,sum(mask,2));
 % (x1 - tau) .* (x2 - tau) .* (x3 - tau) 
 % calcul des sorties
 tet = tau .^ (4/7);
-net = B ./ max(eps,tet .^ (3/2));
-teu = A .* net .* tet;
-
-% points non valide (changement de formule)
-% cas tet << teu
-indeps = find(tet < eps);
-if ~isempty(indeps) 
-    %fprintf('TeT < eps: %d / %d \n',length(indeps),length(tet));
-    %noconv = 1;
-    %fprintf('&');
-    teu(indeps) = (C(indeps) + 1e-1 .^ (7/2)) .^ (2/7);
-    %tet(indeps) = (qpar(indeps) ./ (gamma .* phys.e * (teu(indeps) ./ A(indeps)) .* sqrt(2 .* phys.e ./ (phys.ua .* meff(indeps)))) ) .^ 2;     
-    tet(indeps) = 0.1;     
-    net(indeps) = teu(indeps) ./ tet(indeps) ./ A(indeps);
-end
+% Reconstruct from conduction and pressure. A dimensional eps floor on
+% tet^(3/2) changes all three balances for cold but positive roots.
+teu = (C + tet .^ (7/2)) .^ (2/7);
+net = teu ./ A ./ tet;
 
 %  % cas tet ~ teu
 %  indone = find(tet > teu);
@@ -162,9 +151,9 @@ indbad = find((data_ok == 0) | (err1 > 1e-3) | (err2 > 1e-3) | (err3 > 1) | ...
               (tau == 0) | ~isfinite(tau));
           
 % add security on data type
-teu = max(eps/10,real(teu));
-tet = max(eps/10,real(tet));
-net = max(eps/10,real(net));
+teu = real(teu);
+tet = real(tet);
+net = real(net);
 
 % pas de plot
 return
