@@ -426,6 +426,9 @@ while (nb > 0) && (max(qpl_step ./ max(1 , qpl_in)) > sqrt(eps))
 			break;
 		end
 	end
+	% Keep the coefficient actually used for the returned temperature/density.
+	% The last update proposes a coefficient for a solve that has not occurred.
+	fmom = fmom_mem;
 	%figure(27);clf;hist(fmom_step);title(sprintf('kmom = %d',kmom));drawnow
     % Si W, Prad depend tres fortement de la concentration, il faut recalculer qpl_in
     if option.W_effect == 1 && ~isfield(option,'plot2points')
@@ -783,9 +786,9 @@ while (nb > 0) && (max(qpl_step ./ max(1 , qpl_in)) > sqrt(eps))
         drawnow
     end
     
-    % Compare normalized differences before squaring can overflow, and keep
-    % every returned field from the same evaluated point of the search.
-    err_loc = abs((qpl - qpl_corr) ./ max(1,qpl_in));
+    % Rank and report the same residual, including candidate-dependent input.
+    % Keep every returned field from the same evaluated point of the search.
+    err_loc = abs(qpl - qpl_corr) ./ max(1,abs(qpl_in_loc));
     point_bad = false(size(qpl));
     point_bad(indbad) = true;
     candidate = struct('qpl',qpl,'tebord',tebord,'telim',telim,'nelim',nelim, ...
